@@ -1,0 +1,638 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Massive Stocks REST API",
+    "version": "1.0.0",
+    "description": "Comprehensive OpenAPI 3.1.0 specification for Massive.com (Polygon.io) Stocks REST API. Provides real-time and historical aggregates (OHLC), trades, quotes, market snapshots, company reference, and technical indicators.",
+    "x-long-description": "Complete specification for Massive.com Stocks API matching https://massive.com/docs/rest/stocks/overview#available-endpoints. Compatible with Custom GPTs, AI Trading Agents, Massive dashboard, and Postman."
+  },
+  "servers": [
+    {
+      "url": "https://api.massive.com",
+      "description": "Massive Production REST API"
+    },
+    {
+      "url": "https://api.polygon.io",
+      "description": "Polygon.io Legacy REST API"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    },
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v2/aggs/ticker/{stocksTicker}/prev": {
+      "get": {
+        "summary": "Previous Day Bar",
+        "operationId": "getPreviousDayBar",
+        "description": "Get the previous day's open, high, low, close, and volume (OHLCV) bar for a stock.",
+        "parameters": [
+          {
+            "name": "stocksTicker",
+            "in": "path",
+            "required": true,
+            "description": "The stock ticker symbol (e.g., AAPL, TSLA, MSFT)",
+            "schema": { "type": "string", "example": "AAPL" }
+          },
+          {
+            "name": "adjusted",
+            "in": "query",
+            "required": false,
+            "description": "Whether the results are adjusted for splits (default true)",
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Previous day aggregate data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticker": { "type": "string" },
+                    "queryCount": { "type": "integer" },
+                    "resultsCount": { "type": "integer" },
+                    "adjusted": { "type": "boolean" },
+                    "status": { "type": "string" },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "T": { "type": "string", "description": "Ticker symbol" },
+                          "v": { "type": "number", "description": "Trading volume" },
+                          "vw": { "type": "number", "description": "Volume weighted average price (VWAP)" },
+                          "o": { "type": "number", "description": "Open price" },
+                          "c": { "type": "number", "description": "Close price" },
+                          "h": { "type": "number", "description": "High price" },
+                          "l": { "type": "number", "description": "Low price" },
+                          "t": { "type": "integer", "description": "Timestamp (Unix ms)" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/aggs/ticker/{stocksTicker}/range/{multiplier}/{timespan}/{from}/{to}": {
+      "get": {
+        "summary": "Custom Aggregates (Candlestick Bars)",
+        "operationId": "getCustomBars",
+        "description": "Get custom aggregate candlestick bars (OHLCV) for a stock ticker over a specified date range.",
+        "parameters": [
+          {
+            "name": "stocksTicker",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "example": "AAPL" }
+          },
+          {
+            "name": "multiplier",
+            "in": "path",
+            "required": true,
+            "description": "Size of the timespan multiplier (e.g., 1, 5, 15)",
+            "schema": { "type": "integer", "default": 1 }
+          },
+          {
+            "name": "timespan",
+            "in": "path",
+            "required": true,
+            "description": "Size of the time window",
+            "schema": { "type": "string", "enum": ["minute", "hour", "day", "week", "month", "quarter", "year"], "default": "day" }
+          },
+          {
+            "name": "from",
+            "in": "path",
+            "required": true,
+            "description": "Start date (YYYY-MM-DD or Unix timestamp)",
+            "schema": { "type": "string", "example": "2026-01-01" }
+          },
+          {
+            "name": "to",
+            "in": "path",
+            "required": true,
+            "description": "End date (YYYY-MM-DD or Unix timestamp)",
+            "schema": { "type": "string", "example": "2026-10-09" }
+          },
+          {
+            "name": "adjusted",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["asc", "desc"], "default": "asc" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 5000 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Candlestick bars retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticker": { "type": "string" },
+                    "status": { "type": "string" },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "o": { "type": "number", "description": "Open" },
+                          "h": { "type": "number", "description": "High" },
+                          "l": { "type": "number", "description": "Low" },
+                          "c": { "type": "number", "description": "Close" },
+                          "v": { "type": "number", "description": "Volume" },
+                          "vw": { "type": "number", "description": "VWAP" },
+                          "t": { "type": "integer", "description": "Unix timestamp (ms)" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/aggs/grouped/locale/us/market/stocks/{date}": {
+      "get": {
+        "summary": "Daily Market Summary (Grouped Bars)",
+        "operationId": "getDailyMarketSummary",
+        "description": "Get the daily OHLCV bars for the entire stock market on a specified date.",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "description": "The date of the market session (YYYY-MM-DD)",
+            "schema": { "type": "string", "example": "2026-10-08" }
+          },
+          {
+            "name": "adjusted",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Grouped daily bars returned" }
+        }
+      }
+    },
+    "/v1/open-close/{stocksTicker}/{date}": {
+      "get": {
+        "summary": "Daily Ticker Summary (Open/Close)",
+        "operationId": "getDailyTickerSummary",
+        "description": "Get the open, close, and after-hours prices of a stock on a specific date.",
+        "parameters": [
+          { "name": "stocksTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "example": "2026-10-08" } },
+          { "name": "adjusted", "in": "query", "schema": { "type": "boolean", "default": true } }
+        ],
+        "responses": {
+          "200": { "description": "Daily open and close prices" }
+        }
+      }
+    },
+    "/v2/snapshot/locale/us/markets/stocks/tickers/{stocksTicker}": {
+      "get": {
+        "summary": "Single Ticker Snapshot",
+        "operationId": "getSingleTickerSnapshot",
+        "description": "Get real-time snapshot of a stock ticker including current price, daily bar, minute bar, and prev day bar.",
+        "parameters": [
+          { "name": "stocksTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "ticker": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/snapshot/locale/us/markets/stocks/tickers": {
+      "get": {
+        "summary": "Full Market Snapshot",
+        "operationId": "getFullMarketSnapshot",
+        "description": "Get current snapshots for all US stock tickers.",
+        "parameters": [
+          {
+            "name": "tickers",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated list of tickers to filter",
+            "schema": { "type": "string", "example": "AAPL,MSFT,NVDA" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Market snapshots" }
+        }
+      }
+    },
+    "/v2/snapshot/locale/us/markets/stocks/gainers": {
+      "get": {
+        "summary": "Top Market Gainers",
+        "operationId": "getTopGainers",
+        "description": "Get current top 20 gaining stocks of the day.",
+        "responses": {
+          "200": { "description": "Top gaining stocks list" }
+        }
+      }
+    },
+    "/v2/snapshot/locale/us/markets/stocks/losers": {
+      "get": {
+        "summary": "Top Market Losers",
+        "operationId": "getTopLosers",
+        "description": "Get current top 20 losing stocks of the day.",
+        "responses": {
+          "200": { "description": "Top losing stocks list" }
+        }
+      }
+    },
+    "/v3/snapshot": {
+      "get": {
+        "summary": "Unified Snapshot",
+        "operationId": "getUnifiedSnapshot",
+        "description": "Get unified snapshot of multiple tickers across asset classes.",
+        "parameters": [
+          { "name": "ticker.any_of", "in": "query", "schema": { "type": "string", "example": "AAPL,TSLA" } }
+        ],
+        "responses": {
+          "200": { "description": "Unified snapshots" }
+        }
+      }
+    },
+    "/v2/last/trade/{stocksTicker}": {
+      "get": {
+        "summary": "Last Trade",
+        "operationId": "getLastTrade",
+        "description": "Get the most recent trade price and size for a given stock.",
+        "parameters": [
+          { "name": "stocksTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Last trade details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "T": { "type": "string" },
+                        "p": { "type": "number", "description": "Price" },
+                        "s": { "type": "integer", "description": "Size" },
+                        "t": { "type": "integer", "description": "Timestamp (nanoseconds)" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/last/nbbo/{stocksTicker}": {
+      "get": {
+        "summary": "Last Quote (NBBO)",
+        "operationId": "getLastQuote",
+        "description": "Get the most recent National Best Bid and Offer (NBBO) quote for a stock.",
+        "parameters": [
+          { "name": "stocksTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Last quote details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "T": { "type": "string" },
+                        "p": { "type": "number", "description": "Bid price" },
+                        "P": { "type": "number", "description": "Ask price" },
+                        "s": { "type": "integer", "description": "Bid size" },
+                        "S": { "type": "integer", "description": "Ask size" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/trades/{stockTicker}": {
+      "get": {
+        "summary": "Historical Trades",
+        "operationId": "getHistoricalTrades",
+        "description": "Get historical tick-level trades for a stock.",
+        "parameters": [
+          { "name": "stockTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "timestamp", "in": "query", "schema": { "type": "string", "description": "Query by timestamp or date" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Historical trades" }
+        }
+      }
+    },
+    "/v3/quotes/{stockTicker}": {
+      "get": {
+        "summary": "Historical Quotes (NBBO)",
+        "operationId": "getHistoricalQuotes",
+        "description": "Get historical tick-level quotes (NBBO) for a stock.",
+        "parameters": [
+          { "name": "stockTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "timestamp", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Historical quotes" }
+        }
+      }
+    },
+    "/v3/reference/tickers": {
+      "get": {
+        "summary": "All Tickers",
+        "operationId": "getAllTickers",
+        "description": "Query all supported active and delisted stock tickers and symbols.",
+        "parameters": [
+          { "name": "search", "in": "query", "description": "Search term for company name or ticker", "schema": { "type": "string" } },
+          { "name": "type", "in": "query", "description": "Security type (CS = Common Stock, ETF, etc.)", "schema": { "type": "string" } },
+          { "name": "market", "in": "query", "schema": { "type": "string", "default": "stocks" } },
+          { "name": "active", "in": "query", "schema": { "type": "boolean", "default": true } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tickers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ticker": { "type": "string" },
+                          "name": { "type": "string" },
+                          "market": { "type": "string" },
+                          "locale": { "type": "string" },
+                          "primary_exchange": { "type": "string" },
+                          "currency_name": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/reference/tickers/{ticker}": {
+      "get": {
+        "summary": "Ticker Details",
+        "operationId": "getTickerDetails",
+        "description": "Get detailed company and fundamental information about a ticker including market cap, shares outstanding, and exchange.",
+        "parameters": [
+          { "name": "ticker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Company details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "object",
+                      "properties": {
+                        "ticker": { "type": "string" },
+                        "name": { "type": "string" },
+                        "market_cap": { "type": "number" },
+                        "description": { "type": "string" },
+                        "homepage_url": { "type": "string" },
+                        "total_employees": { "type": "integer" },
+                        "share_class_shares_outstanding": { "type": "number" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/related-companies/{ticker}": {
+      "get": {
+        "summary": "Related Tickers",
+        "operationId": "getRelatedTickers",
+        "description": "Get a list of related companies and peer tickers.",
+        "parameters": [
+          { "name": "ticker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } }
+        ],
+        "responses": {
+          "200": { "description": "Related tickers" }
+        }
+      }
+    },
+    "/v1/indicators/sma/{stockTicker}": {
+      "get": {
+        "summary": "Simple Moving Average (SMA)",
+        "operationId": "getSMA",
+        "description": "Calculate Simple Moving Average technical indicator for a stock.",
+        "parameters": [
+          { "name": "stockTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "timespan", "in": "query", "schema": { "type": "string", "enum": ["minute", "hour", "day"], "default": "day" } },
+          { "name": "window", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": {
+          "200": { "description": "SMA values" }
+        }
+      }
+    },
+    "/v1/indicators/ema/{stockTicker}": {
+      "get": {
+        "summary": "Exponential Moving Average (EMA)",
+        "operationId": "getEMA",
+        "description": "Calculate Exponential Moving Average technical indicator for a stock.",
+        "parameters": [
+          { "name": "stockTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "timespan", "in": "query", "schema": { "type": "string", "enum": ["minute", "hour", "day"], "default": "day" } },
+          { "name": "window", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "EMA values" }
+        }
+      }
+    },
+    "/v1/indicators/rsi/{stockTicker}": {
+      "get": {
+        "summary": "Relative Strength Index (RSI)",
+        "operationId": "getRSI",
+        "description": "Calculate Relative Strength Index technical indicator for a stock.",
+        "parameters": [
+          { "name": "stockTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "timespan", "in": "query", "schema": { "type": "string", "enum": ["minute", "hour", "day"], "default": "day" } },
+          { "name": "window", "in": "query", "schema": { "type": "integer", "default": 14 } }
+        ],
+        "responses": {
+          "200": { "description": "RSI values" }
+        }
+      }
+    },
+    "/v1/indicators/macd/{stockTicker}": {
+      "get": {
+        "summary": "Moving Average Convergence Divergence (MACD)",
+        "operationId": "getMACD",
+        "description": "Calculate MACD technical indicator for a stock.",
+        "parameters": [
+          { "name": "stockTicker", "in": "path", "required": true, "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "timespan", "in": "query", "schema": { "type": "string", "enum": ["minute", "hour", "day"], "default": "day" } }
+        ],
+        "responses": {
+          "200": { "description": "MACD values" }
+        }
+      }
+    },
+    "/v2/reference/news": {
+      "get": {
+        "summary": "Market News",
+        "operationId": "getMarketNews",
+        "description": "Get the most recent stock market news and sentiment articles.",
+        "parameters": [
+          { "name": "ticker", "in": "query", "description": "Filter news by ticker symbol", "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "News articles" }
+        }
+      }
+    },
+    "/v3/reference/dividends": {
+      "get": {
+        "summary": "Dividends",
+        "operationId": "getDividends",
+        "description": "Get historical and upcoming cash dividends for stocks.",
+        "parameters": [
+          { "name": "ticker", "in": "query", "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "Dividend records" }
+        }
+      }
+    },
+    "/v3/reference/splits": {
+      "get": {
+        "summary": "Stock Splits",
+        "operationId": "getStockSplits",
+        "description": "Get historical and upcoming stock splits.",
+        "parameters": [
+          { "name": "ticker", "in": "query", "schema": { "type": "string", "example": "AAPL" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "Stock split events" }
+        }
+      }
+    },
+    "/v1/marketstatus/now": {
+      "get": {
+        "summary": "Current Market Status",
+        "operationId": "getMarketStatus",
+        "description": "Get the current trading status of the markets (open, closed, early-hours, after-hours).",
+        "responses": {
+          "200": {
+            "description": "Market status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "market": { "type": "string", "description": "open, closed, or extended-hours" },
+                    "serverTime": { "type": "string" },
+                    "exchanges": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/marketstatus/upcoming": {
+      "get": {
+        "summary": "Market Holidays",
+        "operationId": "getMarketHolidays",
+        "description": "Get upcoming market holidays and scheduled exchange closures.",
+        "responses": {
+          "200": { "description": "Upcoming market holidays" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "apiKey",
+        "description": "Massive API Key passed as query parameter (?apiKey=YOUR_API_KEY)"
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "APIKey",
+        "description": "Massive API Key passed as Authorization header (Authorization: Bearer YOUR_API_KEY)"
+      }
+    }
+  }
+}

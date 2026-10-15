@@ -1,0 +1,25 @@
+# Secrets & Environment
+.env
+.env.*
+*.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Databases & local storage
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / Frontend
+node_modules/
+dist/
+
+# Large Datasets & Raw Files (>100MB exceeds GitHub limits)
+NSE data/
+*.log
+

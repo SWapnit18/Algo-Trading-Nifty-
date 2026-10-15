@@ -1,0 +1,388 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Upstox Trading API v2",
+    "version": "2.0.0",
+    "description": "Production OpenAPI 3.1.0 specification for Upstox API v2. Supports automated equity orders, market quotes, historical candles, positions, and live margins.",
+    "x-long-description": "Complete Trading and Market Data API specification for Upstox. Compatible with Custom GPTs, AI Trading Agents, Swagger, Postman, and Massive."
+  },
+  "servers": [
+    {
+      "url": "https://api.upstox.com/v2",
+      "description": "Upstox Live Production API"
+    },
+    {
+      "url": "https://sandbox.upstox.com/v2",
+      "description": "Upstox Sandbox / Paper Environment"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/login/authorization/token": {
+      "post": {
+        "summary": "Exchange Authorization Code for Access Token",
+        "operationId": "exchangeOAuthCode",
+        "description": "Exchanges an OAuth authorization code from Upstox dialog login for a daily trading access token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["code", "client_id", "client_secret", "redirect_uri", "grant_type"],
+                "properties": {
+                  "code": { "type": "string", "description": "Authorization code received from OAuth callback" },
+                  "client_id": { "type": "string", "description": "Upstox API Key / App Client ID" },
+                  "client_secret": { "type": "string", "description": "Upstox API Secret" },
+                  "redirect_uri": { "type": "string", "description": "Registered redirect URI" },
+                  "grant_type": { "type": "string", "default": "authorization_code" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access token generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": { "type": "string" },
+                    "user_id": { "type": "string" },
+                    "user_name": { "type": "string" },
+                    "email": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/profile": {
+      "get": {
+        "summary": "Get User Profile",
+        "operationId": "getUserProfile",
+        "description": "Fetches profile and account details of the authenticated Upstox trader.",
+        "responses": {
+          "200": {
+            "description": "Profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "user_id": { "type": "string" },
+                        "user_name": { "type": "string" },
+                        "email": { "type": "string" },
+                        "is_active": { "type": "boolean" },
+                        "broker": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/get-funds-and-margin": {
+      "get": {
+        "summary": "Get Available Funds & Margins",
+        "operationId": "getFundsAndMargin",
+        "description": "Fetches real-time equity funds, available trading margin, and used collateral.",
+        "responses": {
+          "200": {
+            "description": "Margin details retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "equity": {
+                          "type": "object",
+                          "properties": {
+                            "available_margin": { "type": "number" },
+                            "used_margin": { "type": "number" },
+                            "payin_amount": { "type": "number" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/market-quote/quotes": {
+      "get": {
+        "summary": "Get Live Market Quotes",
+        "operationId": "getLiveQuotes",
+        "description": "Returns real-time LTP, OHLC, volume, and bid/ask depths for specified instruments.",
+        "parameters": [
+          {
+            "name": "instrument_key",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "example": "NSE_EQ|INE002A01018" },
+            "description": "Comma-separated instrument keys (e.g. NSE_EQ|INE002A01018 for Reliance)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live quotes returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/historical-candle/{instrument_key}/{interval}/{to_date}/{from_date}": {
+      "get": {
+        "summary": "Get Historical Candles",
+        "operationId": "getHistoricalCandles",
+        "description": "Fetches historical candlestick candles (Open, High, Low, Close, Volume).",
+        "parameters": [
+          { "name": "instrument_key", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "interval", "in": "path", "required": true, "schema": { "type": "string", "enum": ["1minute", "30minute", "day", "week"] } },
+          { "name": "to_date", "in": "path", "required": true, "schema": { "type": "string", "example": "2026-10-09" } },
+          { "name": "from_date", "in": "path", "required": true, "schema": { "type": "string", "example": "2026-09-01" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historical candle candles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "candles": {
+                          "type": "array",
+                          "items": { "type": "array" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/order/place": {
+      "post": {
+        "summary": "Place Equity / F&O Order",
+        "operationId": "placeOrder",
+        "description": "Places a new BUY or SELL order to the exchange through Upstox.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["quantity", "product", "validity", "price", "tag", "instrument_token", "order_type", "transaction_type", "disclosed_quantity", "trigger_price", "is_amo"],
+                "properties": {
+                  "quantity": { "type": "integer", "example": 10 },
+                  "product": { "type": "string", "enum": ["I", "D"], "description": "I = Intraday (MIS), D = Delivery (CNC)" },
+                  "validity": { "type": "string", "enum": ["DAY", "IOC"], "default": "DAY" },
+                  "price": { "type": "number", "example": 0.0, "description": "0.0 for MARKET orders, exact limit price for LIMIT" },
+                  "tag": { "type": "string", "example": "YourAlgo_v2" },
+                  "instrument_token": { "type": "string", "example": "NSE_EQ|INE002A01018" },
+                  "order_type": { "type": "string", "enum": ["MARKET", "LIMIT", "SL", "SL-M"] },
+                  "transaction_type": { "type": "string", "enum": ["BUY", "SELL"] },
+                  "disclosed_quantity": { "type": "integer", "default": 0 },
+                  "trigger_price": { "type": "number", "default": 0.0 },
+                  "is_amo": { "type": "boolean", "default": false }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "order_id": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/order/modify": {
+      "put": {
+        "summary": "Modify Pending Order",
+        "operationId": "modifyOrder",
+        "description": "Modifies quantity or price of an open order.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["order_id", "quantity", "price", "order_type", "validity"],
+                "properties": {
+                  "order_id": { "type": "string" },
+                  "quantity": { "type": "integer" },
+                  "price": { "type": "number" },
+                  "order_type": { "type": "string", "enum": ["MARKET", "LIMIT", "SL", "SL-M"] },
+                  "validity": { "type": "string", "default": "DAY" },
+                  "trigger_price": { "type": "number", "default": 0.0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Order modified successfully" }
+        }
+      }
+    },
+    "/order/cancel": {
+      "delete": {
+        "summary": "Cancel Order",
+        "operationId": "cancelOrder",
+        "description": "Cancels an open or pending order.",
+        "parameters": [
+          { "name": "order_id", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Order cancelled" }
+        }
+      }
+    },
+    "/order/retrieve-all": {
+      "get": {
+        "summary": "Get Order Book",
+        "operationId": "getOrderBook",
+        "description": "Retrieves all orders placed during the current trading session.",
+        "responses": {
+          "200": {
+            "description": "Order list retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/short-term-positions": {
+      "get": {
+        "summary": "Get Open Positions",
+        "operationId": "getPositions",
+        "description": "Retrieves intraday and delivery positions held in the account.",
+        "responses": {
+          "200": {
+            "description": "Open positions retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/long-term-holdings": {
+      "get": {
+        "summary": "Get Demat Holdings",
+        "operationId": "getHoldings",
+        "description": "Retrieves demat equity holdings held in the Upstox account.",
+        "responses": {
+          "200": {
+            "description": "Holdings retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "data": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/order/positions/exit": {
+      "delete": {
+        "summary": "Exit All Positions",
+        "operationId": "exitAllPositions",
+        "description": "Immediately closes all open positions across segments at market price.",
+        "responses": {
+          "200": { "description": "All positions closed successfully" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Upstox Daily Access Token or Long-lived Analytics Token"
+      }
+    }
+  }
+}

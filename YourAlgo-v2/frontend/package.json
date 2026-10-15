@@ -1,0 +1,18 @@
+{
+  "name": "youralgo-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lightweight-charts": "^5.2.1",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
