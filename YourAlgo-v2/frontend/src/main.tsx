@@ -199,6 +199,22 @@ type NavSection =
   | "kronos"
   | "tradingview";
 
+export function formatDateTimeIST(isoStr?: string): string {
+  if (!isoStr) return "—";
+  try {
+    const raw = isoStr.includes("T") ? isoStr : isoStr.replace(" ", "T");
+    const d = new Date(raw.endsWith("Z") ? raw : raw + "Z");
+    if (!isNaN(d.getTime())) {
+      const datePart = d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" });
+      const timePart = d.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      return `${datePart}, ${timePart}`;
+    }
+    return isoStr.replace("T", " ").split(".")[0];
+  } catch {
+    return isoStr;
+  }
+}
+
 export function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
   const [user, setUser] = useState<User | null>(null);
@@ -2116,7 +2132,8 @@ export function App() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
                       <tr style={{ color: "#64748B", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textAlign: "left" }}>
-                        <th style={{ padding: "8px 0" }}>Symbol</th>
+                        <th style={{ padding: "8px 0" }}>Time (IST)</th>
+                        <th>Symbol</th>
                         <th>Qty</th>
                         <th>Avg Price</th>
                         <th>LTP</th>
@@ -2134,7 +2151,8 @@ export function App() {
                           style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)", cursor: "pointer" }}
                           onClick={() => setActivePositionDrawer(p)}
                         >
-                          <td style={{ padding: "10px 0", fontWeight: 700, color: "#F8FAFC" }}>{p.symbol}</td>
+                          <td style={{ padding: "10px 0", color: "#818CF8", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 600 }}>{formatDateTimeIST(p.opened_at)}</td>
+                          <td style={{ fontWeight: 700, color: "#F8FAFC" }}>{p.symbol}</td>
                           <td className="num">{p.quantity}</td>
                           <td className="num">₹{p.avg_price}</td>
                           <td className="num">₹{p.current_price}</td>
@@ -3782,7 +3800,8 @@ export function App() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                     <thead>
                       <tr style={{ color: "#64748B", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textAlign: "left" }}>
-                        <th style={{ padding: "10px 0" }}>Symbol</th>
+                        <th style={{ padding: "10px 0" }}>Opened (IST)</th>
+                        <th>Symbol</th>
                         <th>Qty</th>
                         <th>Avg Price</th>
                         <th>LTP</th>
@@ -3799,7 +3818,8 @@ export function App() {
                           style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)", cursor: "pointer" }}
                           onClick={() => setActivePositionDrawer(p)}
                         >
-                          <td style={{ padding: "12px 0", fontWeight: 700, color: "#F8FAFC" }}>{p.symbol}</td>
+                          <td style={{ padding: "12px 0", color: "#818CF8", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 600 }}>{formatDateTimeIST(p.opened_at)}</td>
+                          <td style={{ fontWeight: 700, color: "#F8FAFC" }}>{p.symbol}</td>
                           <td className="num">{p.quantity}</td>
                           <td className="num">₹{p.avg_price}</td>
                           <td className="num">₹{p.current_price}</td>
@@ -3843,7 +3863,8 @@ export function App() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
                       <tr style={{ color: "#64748B", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", textAlign: "left" }}>
-                        <th style={{ padding: "10px 0" }}>Order ID</th>
+                        <th style={{ padding: "10px 0" }}>Date & Time (IST)</th>
+                        <th>Order ID</th>
                         <th>Symbol</th>
                         <th>Side</th>
                         <th>Qty</th>
@@ -3856,7 +3877,10 @@ export function App() {
                     <tbody>
                       {orders.map(o => (
                         <tr key={o.id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
-                          <td style={{ padding: "10px 0", color: "#94A3B8", fontSize: 11 }} className="num">{o.client_order_id}</td>
+                          <td style={{ padding: "10px 0", color: "#A5B4FC", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 600 }}>
+                            {formatDateTimeIST(o.created_at)}
+                          </td>
+                          <td style={{ color: "#94A3B8", fontSize: 11 }} className="num">{o.client_order_id}</td>
                           <td style={{ fontWeight: 700, color: "#F8FAFC" }}>{o.symbol}</td>
                           <td style={{ color: o.side === "BUY" ? "#10B981" : "#F43F5E", fontWeight: 700 }}>{o.side}</td>
                           <td className="num">{o.quantity}</td>
