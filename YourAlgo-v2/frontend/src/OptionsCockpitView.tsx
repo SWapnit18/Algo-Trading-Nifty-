@@ -47,34 +47,32 @@ export function OptionsCockpitView({ api, token, authHeaders, showToast }: Optio
   const loadMarketData = async () => {
     setLoading(true);
     try {
-      const [regRes, chainRes] = await Promise.all([
+      const [regRes, chainRes, selRes] = await Promise.all([
         fetch(`${api}/api/regime/status/${underlying}`),
-        fetch(`${api}/api/options/chain/${underlying}`)
-      ]);
-      const reg = await regRes.json();
-      const chain = await chainRes.json();
-      setRegimeData(reg);
-      setOptionChain(chain);
-
-      // Auto-evaluate best contract based on MTF direction
-      const dir = reg?.mtf_alignment?.recommended_direction;
-      if (dir && dir !== "NO_TRADE") {
-        const selRes = await fetch(`${api}/api/options/select`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ underlying, direction: dir })
-        });
-        const selData = await selRes.json();
-        if (selData?.contract) setSelectedContract(selData.contract);
-      } else {
-        // Default select ATM CE for preview
-        const selRes = await fetch(`${api}/api/options/select`, {
+        fetch(`${api}/api/options/chain/${underlying}`),
+        fetch(`${api}/api/options/select`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ underlying, direction: "BUY_CE" })
+        })
+      ]);
+      const reg = await regRes.json();
+      const chain = await chainRes.json();
+      const selData = await selRes.json();
+      setRegimeData(reg);
+      setOptionChain(chain);
+      if (selData?.contract) setSelectedContract(selData.contract);
+
+      // If MTF consensus is Bearish, fine-tune selected contract to PE
+      const dir = reg?.mtf_alignment?.recommended_direction;
+      if (dir === "BUY_PE") {
+        const peRes = await fetch(`${api}/api/options/select`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ underlying, direction: "BUY_PE" })
         });
-        const selData = await selRes.json();
-        if (selData?.contract) setSelectedContract(selData.contract);
+        const peData = await peRes.json();
+        if (peData?.contract) setSelectedContract(peData.contract);
       }
     } catch (e) {
       console.warn("Options cockpit fetch error:", e);

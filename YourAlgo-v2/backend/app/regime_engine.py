@@ -240,21 +240,13 @@ class MarketRegimeEngine:
             summary=summary
         )
 
-    def evaluate_multi_timeframe(
+    def evaluate_from_regimes(
         self,
         symbol: str,
-        candles_15m: List[Candle],
-        candles_5m: List[Candle],
-        candles_1m: List[Candle]
+        reg_15m: str,
+        reg_5m: str,
+        reg_1m: str
     ) -> MultiTimeframeResult:
-        """
-        Synthesizes 15m (Macro Regime), 5m (Setup Confirmation), 1m (Micro Timing).
-        Requires alignment between timeframes for CE/PE buying.
-        """
-        reg_15m = self.analyze_candles(symbol, candles_15m, "15m").regime
-        reg_5m = self.analyze_candles(symbol, candles_5m, "5m").regime
-        reg_1m = self.analyze_candles(symbol, candles_1m, "1m").regime
-
         is_bull_15m = reg_15m in [REGIME_BULL, REGIME_STRONG_BULL]
         is_bull_5m = reg_5m in [REGIME_BULL, REGIME_STRONG_BULL]
         is_bull_1m = reg_1m in [REGIME_BULL, REGIME_STRONG_BULL]
@@ -285,7 +277,6 @@ class MarketRegimeEngine:
                 alignment_reason=f"Full Bearish MTF Alignment: 15m ({reg_15m}) -> 5m ({reg_5m}) -> 1m ({reg_1m})"
             )
 
-        # Conflict or Neutral present
         return MultiTimeframeResult(
             symbol=symbol,
             tf_15m_regime=reg_15m,
@@ -295,6 +286,22 @@ class MarketRegimeEngine:
             recommended_direction="NO_TRADE",
             alignment_reason=f"Conflicting MTF: 15m is {reg_15m}, 5m is {reg_5m}, 1m is {reg_1m}. System requires alignment."
         )
+
+    def evaluate_multi_timeframe(
+        self,
+        symbol: str,
+        candles_15m: List[Candle],
+        candles_5m: List[Candle],
+        candles_1m: List[Candle]
+    ) -> MultiTimeframeResult:
+        """
+        Synthesizes 15m (Macro Regime), 5m (Setup Confirmation), 1m (Micro Timing).
+        Requires alignment between timeframes for CE/PE buying.
+        """
+        reg_15m = self.analyze_candles(symbol, candles_15m, "15m").regime
+        reg_5m = self.analyze_candles(symbol, candles_5m, "5m").regime
+        reg_1m = self.analyze_candles(symbol, candles_1m, "1m").regime
+        return self.evaluate_from_regimes(symbol, reg_15m, reg_5m, reg_1m)
 
     def calculate_signal_quality_score(
         self,

@@ -448,6 +448,7 @@ class RealUpstoxMarketDataProvider:
         self._dynamic_ticks: Dict[str, float] = {}
         self._base_prices: Dict[str, float] = dict(DEFAULT_BASE_PRICES)
         self._live_real_cache: Dict[str, Any] = {}
+        self._in_memory_candle_cache: Dict[str, Tuple[float, List[Any]]] = {}
         self._http_client = httpx.AsyncClient(timeout=3.5, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
         # Initialize broker if token is configured in settings
@@ -600,13 +601,21 @@ class RealUpstoxMarketDataProvider:
 
         from_date_str = start_date or (ist_now - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-        # Check Redis Cache if available
+        # Check fast in-memory cache first
+        now_ts = time.time()
         redis_cache_key = f"candles:{inst_key}:{upstox_interval}:{from_date_str}:{to_date_str}"
+        if redis_cache_key in self._in_memory_candle_cache:
+            exp_ts, cached_raw = self._in_memory_candle_cache[redis_cache_key]
+            if now_ts < exp_ts:
+                return self._process_raw_candles(cached_raw, agg_factor, limit)
+
+        # Check Redis Cache if available
         if redis_client:
             try:
                 cached_json = redis_client.get(redis_cache_key)
                 if cached_json:
                     raw_candles = json.loads(cached_json)
+                    self._in_memory_candle_cache[redis_cache_key] = (now_ts + 60.0, raw_candles)
                     return self._process_raw_candles(raw_candles, agg_factor, limit)
             except Exception:
                 pass
@@ -616,13 +625,14 @@ class RealUpstoxMarketDataProvider:
         # Call official Upstox API
         url = f"https://api.upstox.com/v2/historical-candle/{quoted_key}/{upstox_interval}/{to_date_str}/{from_date_str}"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=4.0) as client:
                 resp = await client.get(url, headers={"Accept": "application/json"})
                 if resp.status_code == 200:
                     payload = resp.json()
                     candles_raw = payload.get("data", {}).get("candles", [])
 
-                    # Store in Redis Cache (TTL = 120 seconds)
+                    # Store in fast in-memory cache (TTL = 60s) and Redis (TTL = 120s)
+                    self._in_memory_candle_cache[redis_cache_key] = (now_ts + 60.0, candles_raw)
                     if redis_client and candles_raw:
                         try:
                             redis_client.setex(redis_cache_key, 120, json.dumps(candles_raw))

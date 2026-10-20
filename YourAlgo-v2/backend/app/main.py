@@ -250,6 +250,17 @@ async def lifespan(app: FastAPI):
 
     # Start automation engine background worker
     automation_engine.start()
+
+    # Pre-warm Research Lab & Cockpit caches in background for instant UI response
+    async def _prewarm_cache():
+        try:
+            await asyncio.sleep(0.5)
+            await compare_all_strategies("NIFTY")
+            await run_walk_forward_backtest("NIFTY", "STRAT_ADAPTIVE_TREND_RIDER")
+        except Exception:
+            pass
+
+    asyncio.create_task(_prewarm_cache())
     yield
     # Stop on shutdown
     automation_engine.stop()
@@ -2648,14 +2659,16 @@ async def select_best_option_route(payload: Dict[str, Any]):
 @app.get("/api/regime/status/{underlying}")
 async def get_regime_status(underlying: str):
     sym = "NIFTY 50" if underlying.upper() == "NIFTY" else ("BANK NIFTY" if "BANK" in underlying.upper() else underlying)
-    candles_15m = await market_service.get_historical_data(sym, timeframe="15m", limit=60)
-    candles_5m = await market_service.get_historical_data(sym, timeframe="5m", limit=60)
-    candles_1m = await market_service.get_historical_data(sym, timeframe="1m", limit=60)
+    candles_15m, candles_5m, candles_1m = await asyncio.gather(
+        market_service.get_historical_data(sym, timeframe="15m", limit=60),
+        market_service.get_historical_data(sym, timeframe="5m", limit=60),
+        market_service.get_historical_data(sym, timeframe="1m", limit=60),
+    )
 
-    mtf = regime_engine.evaluate_multi_timeframe(underlying, candles_15m, candles_5m, candles_1m)
     reg_15m = regime_engine.analyze_candles(underlying, candles_15m, "15m")
     reg_5m = regime_engine.analyze_candles(underlying, candles_5m, "5m")
     reg_1m = regime_engine.analyze_candles(underlying, candles_1m, "1m")
+    mtf = regime_engine.evaluate_from_regimes(underlying, reg_15m.regime, reg_5m.regime, reg_1m.regime)
 
     score_obj = regime_engine.calculate_signal_quality_score(reg_15m, reg_5m, reg_1m)
 

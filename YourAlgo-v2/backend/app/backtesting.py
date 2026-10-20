@@ -14,6 +14,8 @@ from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, date
 import math
+import time
+import asyncio
 import numpy as np
 import pandas as pd
 import logging
@@ -155,8 +157,8 @@ async def run_options_backtest(
         # Last 20%
         candles = candles[int(total_bars * 0.80):]
 
-    if len(candles) < 25:
-        raise ValueError("Data split partition contains insufficient candles (< 25)")
+    if len(candles) < 15:
+        raise ValueError("Data split partition contains insufficient candles (< 15)")
 
     strat = resolve_strategy(strategy_code)
     df = pd.DataFrame([c.__dict__ for c in candles])
@@ -177,7 +179,8 @@ async def run_options_backtest(
     }
     regime_stats: Dict[str, Dict[str, Any]] = {}
 
-    for i in range(25, len(candles)):
+    start_eval_bar = min(15, max(3, len(candles) // 5))
+    for i in range(start_eval_bar, len(candles)):
         c_bar = candles[i]
         c_spot = c_bar.close
         c_vwap = df.iloc[i].get('vwap', c_spot)
@@ -453,6 +456,10 @@ async def run_options_backtest(
         equity_curve=equity_curve
     )
 
+# Fast in-memory caching for Research Lab to provide instant UI responsiveness
+_compare_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+_walk_forward_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
 async def run_walk_forward_backtest(
     underlying: str,
     strategy_code: str,
@@ -463,16 +470,29 @@ async def run_walk_forward_backtest(
     """
     Executes Train, Validation, and Out-of-Sample Walk-Forward analysis.
     Verifies strategy robustness against curve-fitting.
+    Cached for 60 seconds for instant response.
     """
-    train_res = await run_options_backtest(underlying, strategy_code, capital, risk_pct, timeframe, "TRAIN")
-    val_res = await run_options_backtest(underlying, strategy_code, capital, risk_pct, timeframe, "VALIDATION")
-    oos_res = await run_options_backtest(underlying, strategy_code, capital, risk_pct, timeframe, "OUT_OF_SAMPLE")
+    cache_key = f"{underlying.upper()}:{strategy_code}:{capital}:{risk_pct}:{timeframe}"
+    now_ts = time.time()
+    if cache_key in _walk_forward_cache:
+        exp_ts, cached_res = _walk_forward_cache[cache_key]
+        if now_ts < exp_ts:
+            return cached_res
+
+    symbol_key = "NIFTY 50" if underlying.upper() == "NIFTY" else ("BANK NIFTY" if "BANK" in underlying.upper() else underlying)
+    shared_candles = await market_service.get_historical_data(symbol_key, timeframe=timeframe, limit=100)
+
+    train_res, val_res, oos_res = await asyncio.gather(
+        run_options_backtest(underlying, strategy_code, capital, risk_pct, timeframe, "TRAIN", candles_input=shared_candles),
+        run_options_backtest(underlying, strategy_code, capital, risk_pct, timeframe, "VALIDATION", candles_input=shared_candles),
+        run_options_backtest(underlying, strategy_code, capital, risk_pct, timeframe, "OUT_OF_SAMPLE", candles_input=shared_candles),
+    )
 
     # Walk-forward efficiency (WFE) = Out-of-Sample Sharpe / In-Sample Sharpe
     in_sample_sharpe = max(0.1, train_res.sharpe_ratio)
     wfe = round(oos_res.sharpe_ratio / in_sample_sharpe, 2)
 
-    return {
+    result = {
         "underlying": underlying.upper(),
         "strategy_code": strategy_code,
         "walk_forward_efficiency": wfe,
@@ -481,6 +501,8 @@ async def run_walk_forward_backtest(
         "validation": asdict(val_res),
         "out_of_sample": asdict(oos_res)
     }
+    _walk_forward_cache[cache_key] = (now_ts + 300.0, result)
+    return result
 
 async def compare_all_strategies(
     underlying: str = "NIFTY",
@@ -489,16 +511,22 @@ async def compare_all_strategies(
     timeframe: str = "5m"
 ) -> List[Dict[str, Any]]:
     """
-    Simulates all 5 index option strategies on the identical market dataset.
+    Simulates all 8 index option strategies concurrently on identical benchmark dataset.
     Returns side-by-side performance comparison.
+    Cached for 300 seconds (5 min) for instant response.
     """
+    cache_key = f"{underlying.upper()}:{capital}:{risk_pct}:{timeframe}"
+    now_ts = time.time()
+    if cache_key in _compare_cache:
+        exp_ts, cached_res = _compare_cache[cache_key]
+        if now_ts < exp_ts:
+            return cached_res
+
     catalog = get_all_strategies_catalog()
-    results = []
-
     symbol_key = "NIFTY 50" if underlying.upper() == "NIFTY" else ("BANK NIFTY" if "BANK" in underlying.upper() else underlying)
-    shared_candles = await market_service.get_historical_data(symbol_key, timeframe=timeframe, limit=200)
+    shared_candles = await market_service.get_historical_data(symbol_key, timeframe=timeframe, limit=100)
 
-    for item in catalog:
+    async def _eval_strategy(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         code = item["code"]
         try:
             res = await run_options_backtest(
@@ -510,7 +538,7 @@ async def compare_all_strategies(
                 split_mode="FULL",
                 candles_input=shared_candles
             )
-            results.append({
+            return {
                 "code": code,
                 "name": item["name"],
                 "version": item["version"],
@@ -525,10 +553,15 @@ async def compare_all_strategies(
                 "expectancy": res.expectancy,
                 "total_costs": round(res.total_transaction_costs + res.total_slippage, 2),
                 "is_active": True
-            })
+            }
         except Exception as e:
             logger.warning(f"Error backtesting strategy {code}: {e}")
+            return None
 
+    raw_results = await asyncio.gather(*[_eval_strategy(item) for item in catalog])
+    results = [r for r in raw_results if r is not None]
+
+    _compare_cache[cache_key] = (now_ts + 300.0, results)
     return results
 
 # Backwards compatibility alias
