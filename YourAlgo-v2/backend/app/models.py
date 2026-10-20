@@ -324,3 +324,96 @@ class NSECreditRating(Base):
     isin: Mapped[str] = mapped_column(String(30), index=True, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+# ----------------- INDEX OPTIONS DERIVATIVES & SAFETY MODELS -----------------
+class OptionContract(Base):
+    __tablename__ = "option_contracts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    underlying: Mapped[str] = mapped_column(String(20), index=True) # NIFTY, BANKNIFTY
+    tradingsymbol: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    strike: Mapped[float] = mapped_column(Float, index=True)
+    expiry: Mapped[str] = mapped_column(String(30), index=True)
+    option_type: Mapped[str] = mapped_column(String(10), index=True) # CE, PE
+    lot_size: Mapped[int] = mapped_column(Integer, default=25)
+    instrument_key: Mapped[str] = mapped_column(String(100), default="", index=True)
+    exchange: Mapped[str] = mapped_column(String(20), default="NSE_FO")
+    tick_size: Mapped[float] = mapped_column(Float, default=0.05)
+    ltp: Mapped[float] = mapped_column(Float, default=0.0)
+    bid: Mapped[float] = mapped_column(Float, default=0.0)
+    ask: Mapped[float] = mapped_column(Float, default=0.0)
+    iv: Mapped[float] = mapped_column(Float, default=0.0)
+    delta: Mapped[float] = mapped_column(Float, default=0.0)
+    gamma: Mapped[float] = mapped_column(Float, default=0.0)
+    theta: Mapped[float] = mapped_column(Float, default=0.0)
+    vega: Mapped[float] = mapped_column(Float, default=0.0)
+    oi: Mapped[int] = mapped_column(Integer, default=0)
+    volume: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class MarketDataMetadata(Base):
+    __tablename__ = "market_data_metadata"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instrument_key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    symbol: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="LIVE") # LIVE, STALE, DISCONNECTED, NOT_CONFIGURED
+    last_tick_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    latency_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    source: Mapped[str] = mapped_column(String(50), default="UPSTOX_WS")
+
+class StrategyVersion(Base):
+    __tablename__ = "strategy_versions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_code: Mapped[str] = mapped_column(String(80), index=True)
+    version: Mapped[str] = mapped_column(String(30))
+    author: Mapped[str] = mapped_column(String(100), default="Quantitative Engineering")
+    changelog: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class StrategyParameter(Base):
+    __tablename__ = "strategy_parameters"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_version_id: Mapped[int] = mapped_column(Integer, ForeignKey("strategy_versions.id"), index=True)
+    param_key: Mapped[str] = mapped_column(String(100), index=True)
+    param_value: Mapped[str] = mapped_column(String(255))
+    value_type: Mapped[str] = mapped_column(String(30), default="float")
+    is_optimized: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+
+class PositionEvent(Base):
+    __tablename__ = "position_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(50)) # OPEN, SL_UPDATED, BREAKEVEN, PROFIT_LOCK, TRAILING, THESIS_EXIT, HARD_SL, TARGET, CLOSE
+    price: Mapped[float] = mapped_column(Float)
+    stop_loss: Mapped[float] = mapped_column(Float)
+    trailing_stop: Mapped[float] = mapped_column(Float, default=0.0)
+    details: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class DailyRisk(Base):
+    __tablename__ = "daily_risk"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)
+    trade_date: Mapped[str] = mapped_column(String(20), index=True)
+    realized_pnl: Mapped[float] = mapped_column(Float, default=0.0)
+    unrealized_pnl: Mapped[float] = mapped_column(Float, default=0.0)
+    trades_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_loss_limit: Mapped[float] = mapped_column(Float, default=2000.0)
+    is_limit_breached: Mapped[bool] = mapped_column(Boolean, default=False)
+    circuit_breaker_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ReconciliationEvent(Base):
+    __tablename__ = "reconciliation_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, default=1)
+    broker: Mapped[str] = mapped_column(String(50), default="UPSTOX")
+    event_type: Mapped[str] = mapped_column(String(50)) # SYNC_SUCCESS, MISMATCH_DETECTED, FORCED_HALT
+    local_state_json: Mapped[str] = mapped_column(Text, default="{}")
+    broker_state_json: Mapped[str] = mapped_column(Text, default="{}")
+    discrepancy_details: Mapped[str] = mapped_column(Text, default="")
+    action_taken: Mapped[str] = mapped_column(String(100), default="NONE")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+

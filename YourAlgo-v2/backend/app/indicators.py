@@ -25,8 +25,12 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 
 def calculate_vwap(df: pd.DataFrame) -> pd.Series:
     typical_price = (df['high'] + df['low'] + df['close']) / 3.0
-    cum_vol_price = (typical_price * df['volume']).cumsum()
-    cum_vol = df['volume'].cumsum()
+    vol = df.get('volume', pd.Series(0, index=df.index))
+    if vol.sum() <= 0:
+        # For cash index without volume feed, VWAP equals expanding mean of typical price
+        return typical_price.expanding().mean()
+    cum_vol_price = (typical_price * vol).cumsum()
+    cum_vol = vol.cumsum()
     return cum_vol_price / (cum_vol + 1e-9)
 
 def calculate_rvol(df: pd.DataFrame, period: int = 20) -> pd.Series:

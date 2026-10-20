@@ -4,6 +4,8 @@ import "./index.css";
 import { InvestIQView } from "./InvestIQView";
 import { KronosView } from "./KronosView";
 import { TradingViewView } from "./TradingViewView";
+import { OptionsCockpitView } from "./OptionsCockpitView";
+import { ResearchLabView } from "./ResearchLabView";
 
 const API = "";
 
@@ -197,7 +199,9 @@ type NavSection =
   | "settings"
   | "investiq"
   | "kronos"
-  | "tradingview";
+  | "tradingview"
+  | "options_cockpit"
+  | "research_lab";
 
 export function formatDateTimeIST(isoStr?: string): string {
   if (!isoStr) return "—";
@@ -1549,6 +1553,11 @@ export function App() {
               <NavItem active={nav === "tradingview"} label="TradingView Pro" icon="📈" badge="LIVE" collapsed={!sidebarOpen} onClick={() => setNav("tradingview")} />
             </NavGroup>
 
+            <NavGroup label={sidebarOpen ? "INDEX OPTIONS TRADING" : ""} show={sidebarOpen}>
+              <NavItem active={nav === "options_cockpit"} label="Options Cockpit" icon="🎯" badge="NIFTY" collapsed={!sidebarOpen} onClick={() => setNav("options_cockpit")} />
+              <NavItem active={nav === "research_lab"} label="Research Lab" icon="🧪" badge="WFE" collapsed={!sidebarOpen} onClick={() => setNav("research_lab")} />
+            </NavGroup>
+
             <NavGroup label={sidebarOpen ? "ALGO AUTOMATION" : ""} show={sidebarOpen}>
               <NavItem
                 active={nav === "automation"}
@@ -1562,7 +1571,7 @@ export function App() {
               <NavItem active={nav === "strategies"} label="Strategies" icon="◈" collapsed={!sidebarOpen} onClick={() => setNav("strategies")} />
               <NavItem active={nav === "signals"} label="Signals" icon="◉" collapsed={!sidebarOpen} onClick={() => setNav("signals")} />
               <NavItem active={nav === "positions"} label="Positions" icon="☰" badge={positions.length ? String(positions.length) : undefined} collapsed={!sidebarOpen} onClick={() => setNav("positions")} />
-              <NavItem active={nav === "orders"} label="Orders" icon="📄" collapsed={!sidebarOpen} onClick={() => setNav("orders")} />
+              <NavItem active={nav === "orders"} label="Orders" icon="📄" badge={orders.length ? String(orders.length) : undefined} collapsed={!sidebarOpen} onClick={() => setNav("orders")} />
             </NavGroup>
 
             <NavGroup label={sidebarOpen ? "PORTFOLIO & RISK" : ""} show={sidebarOpen}>
@@ -4505,6 +4514,24 @@ export function App() {
             </div>
           )}
 
+          {/* 15B. INDEX OPTIONS BUYER COCKPIT */}
+          {nav === "options_cockpit" && (
+            <OptionsCockpitView
+              api={API}
+              token={token}
+              authHeaders={authHeaders}
+              showToast={showToast}
+            />
+          )}
+
+          {/* 15C. STRATEGY RESEARCH LAB */}
+          {nav === "research_lab" && (
+            <ResearchLabView
+              api={API}
+              showToast={showToast}
+            />
+          )}
+
           {/* 16. INVESTIQ AI VIEW */}
           {nav === "investiq" && (
             <InvestIQView
@@ -5494,6 +5521,7 @@ function NavItem({
 }) {
   return (
     <button
+      id={`nav-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`}
       onClick={onClick}
       title={label}
       style={{

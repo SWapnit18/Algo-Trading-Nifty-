@@ -1,21 +1,16 @@
-# Environment Variables (Secrets - NEVER commit or share)
+# Secrets & Environment
 .env
-.env.local
+.env.*
 *.env
-*.env.*
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
+.venv/
 venv/
-ENV/
+__pycache__/
+*.pyc
 .pytest_cache/
 
-# Databases
+# Databases & local storage
 *.db
 *.sqlite
 *.sqlite3
@@ -23,17 +18,12 @@ ENV/
 # Node / Frontend
 node_modules/
 dist/
-dist-ssr/
-*.local
 
-# Logs
+# Large Datasets & Raw Files (>100MB exceeds GitHub limits)
+NSE data/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# OS
-.DS_Store
-Thumbs.db
+
+*.bak
+*.db.bak
+scratch/

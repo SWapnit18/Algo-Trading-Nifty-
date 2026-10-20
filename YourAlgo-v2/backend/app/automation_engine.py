@@ -17,6 +17,7 @@ from .market_data import market_service
 from .strategies import STRATEGY_REGISTRY
 from .risk import validate_trade
 from .brokers.manager import broker_manager
+from .position_manager import position_manager
 
 class AutomationEngine:
     """
@@ -117,31 +118,77 @@ class AutomationEngine:
         exit_triggered = False
         exit_reason = ""
 
-        # Condition 1: Automatic Stop Loss
-        if cfg.auto_stop_loss and pos.stop_loss and ltp <= pos.stop_loss:
-            exit_triggered = True
-            exit_reason = f"STOP LOSS TRIGGERED: LTP ₹{ltp} touched/breached stop ₹{pos.stop_loss}"
+        # Condition 0: Evaluate via Position Manager (Adaptive Trailing, Session 15:15 IST, Breakeven Lock, Thesis Exit)
+        is_option = any(term in pos.symbol.upper() for term in ["CE", "PE", "NIFTY", "BANKNIFTY"]) or (pos.strategy_code and "STRAT_" in pos.strategy_code)
+        if is_option:
+            und_sym = "BANKNIFTY" if "BANK" in pos.symbol.upper() else "NIFTY"
+            und_candles = await market_service.get_historical_data(und_sym, timeframe="5m", limit=30)
+            und_spot = ltp
+            und_vwap = ltp
+            und_atr = 20.0
+            if und_candles and len(und_candles) >= 15:
+                import pandas as pd
+                from .indicators import compute_all_indicators
+                df_u = pd.DataFrame([c.__dict__ for c in und_candles])
+                df_u = compute_all_indicators(df_u)
+                last_u = df_u.iloc[-1]
+                und_spot = float(last_u['close'])
+                und_vwap = float(last_u.get('vwap', und_spot))
+                und_atr = float(last_u.get('atr14', und_spot * 0.007))
 
-        # Condition 2: Automatic Target
-        elif cfg.auto_target and pos.target and ltp >= pos.target:
-            exit_triggered = True
-            exit_reason = f"TARGET REACHED: LTP ₹{ltp} reached target ₹{pos.target}"
+            opt_type = "PE" if "PE" in pos.symbol.upper() else "CE"
+            dec = position_manager.evaluate_open_position(
+                position_id=pos.id,
+                symbol=pos.symbol,
+                option_type=opt_type,
+                entry_price=pos.avg_price,
+                current_opt_price=ltp,
+                initial_sl=pos.stop_loss or round(pos.avg_price * 0.80, 2),
+                current_sl=pos.stop_loss or round(pos.avg_price * 0.80, 2),
+                target_price=pos.target or 0.0,
+                trailing_type="ATR_TRAILING",
+                highest_price_seen=max(pos.current_price or pos.avg_price, ltp),
+                bars_held=5,
+                underlying_spot=und_spot,
+                underlying_vwap=und_vwap,
+                regime_15m="BULL" if und_spot >= und_vwap else "BEAR",
+                underlying_atr=und_atr
+            )
 
-        # Condition 3: Automatic Strategy Exit
-        elif cfg.auto_strategy_exit and pos.strategy_code:
-            strat = STRATEGY_REGISTRY.get(pos.strategy_code)
-            if strat:
-                candles = await market_service.get_historical_data(pos.symbol, timeframe="15m", limit=30)
-                if candles and len(candles) >= 20:
-                    import pandas as pd
-                    from .indicators import compute_all_indicators
-                    df = pd.DataFrame([c.__dict__ for c in candles])
-                    df = compute_all_indicators(df)
-                    last = df.iloc[-1]
-                    # If EMA20 crossed below EMA50, trigger exit
-                    if float(last['ema20']) < float(last['ema50']):
-                        exit_triggered = True
-                        exit_reason = "STRATEGY EXIT: EMA20 crossed below EMA50 trend reversal"
+            if dec.new_trailing_sl > (pos.stop_loss or 0.0):
+                pos.stop_loss = dec.new_trailing_sl
+                db.commit()
+
+            if dec.should_close:
+                exit_triggered = True
+                exit_reason = f"{dec.exit_reason}: {dec.state_description}"
+
+        # Fallback Standard Conditions
+        if not exit_triggered:
+            # Condition 1: Automatic Stop Loss
+            if cfg.auto_stop_loss and pos.stop_loss and ltp <= pos.stop_loss:
+                exit_triggered = True
+                exit_reason = f"STOP LOSS TRIGGERED: LTP Rs. {ltp} touched/breached stop Rs. {pos.stop_loss}"
+
+            # Condition 2: Automatic Target
+            elif cfg.auto_target and pos.target and ltp >= pos.target:
+                exit_triggered = True
+                exit_reason = f"TARGET REACHED: LTP Rs. {ltp} reached target Rs. {pos.target}"
+
+            # Condition 3: Automatic Strategy Exit
+            elif cfg.auto_strategy_exit and pos.strategy_code and not is_option:
+                strat = STRATEGY_REGISTRY.get(pos.strategy_code)
+                if strat:
+                    candles = await market_service.get_historical_data(pos.symbol, timeframe="15m", limit=30)
+                    if candles and len(candles) >= 20:
+                        import pandas as pd
+                        from .indicators import compute_all_indicators
+                        df = pd.DataFrame([c.__dict__ for c in candles])
+                        df = compute_all_indicators(df)
+                        last = df.iloc[-1]
+                        if float(last['ema20']) < float(last['ema50']):
+                            exit_triggered = True
+                            exit_reason = "STRATEGY EXIT: EMA20 crossed below EMA50 trend reversal"
 
         if exit_triggered:
             await self._execute_automatic_exit(pos, ltp, exit_reason, cfg, adapter, user_id, db)
@@ -211,8 +258,9 @@ class AutomationEngine:
         """
         Evaluates configured watchlist symbols for new strategy entries.
         """
-        symbols = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
-        strat = STRATEGY_REGISTRY.get(cfg.strategy_code, STRATEGY_REGISTRY["STRAT_EMA_VWAP"])
+        is_index_options = any(k in (cfg.strategy_code or "") for k in ["STRAT_", "TREND", "RR_13", "SQUEEZE", "ORB", "REVERSION", "GAMMA", "VWAP", "CPR"])
+        symbols = ["NIFTY", "BANKNIFTY"] if is_index_options else ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK"]
+        strat = STRATEGY_REGISTRY.get(cfg.strategy_code, STRATEGY_REGISTRY["STRAT_ADAPTIVE_TREND_RIDER"])
 
         t_acc = db.scalar(select(TradingAccount).where(TradingAccount.user_id == user_id))
         base_capital = risk_cfg.capital if risk_cfg else 50000.0
@@ -222,17 +270,40 @@ class AutomationEngine:
         capital = base_capital
 
         for sym in symbols:
-            # Skip if user already has an open position in this stock
-            existing = db.scalar(select(Position).where(Position.user_id == user_id, Position.symbol == sym, Position.status == "OPEN"))
+            # Skip if user already has an open position in this stock or option
+            existing = db.scalar(select(Position).where(Position.user_id == user_id, Position.symbol.like(f"%{sym}%"), Position.status == "OPEN"))
             if existing:
                 continue
 
-            candles = await market_service.get_historical_data(sym, timeframe="15m", limit=70)
-            if not candles or len(candles) < 50:
-                continue
-
-            # Run Strategy with base capital
-            sig = strat.evaluate(sym, candles, capital=capital, risk_pct=cfg.risk_per_trade_pct)
+            if is_index_options:
+                c_15m = await market_service.get_historical_data(sym, timeframe="15m", limit=50)
+                c_5m = await market_service.get_historical_data(sym, timeframe="5m", limit=50)
+                c_1m = await market_service.get_historical_data(sym, timeframe="1m", limit=50)
+                if not c_5m or len(c_5m) < 20:
+                    continue
+                sig = strat.evaluate(
+                    underlying=sym,
+                    candles_15m=c_15m,
+                    candles_5m=c_5m,
+                    candles_1m=c_1m,
+                    capital=capital,
+                    risk_pct=cfg.risk_per_trade_pct
+                )
+            else:
+                candles = await market_service.get_historical_data(sym, timeframe="15m", limit=70)
+                if not candles or len(candles) < 20:
+                    continue
+                try:
+                    sig = strat.evaluate(
+                        underlying=sym,
+                        candles_15m=candles,
+                        candles_5m=candles,
+                        candles_1m=candles,
+                        capital=capital,
+                        risk_pct=cfg.risk_per_trade_pct
+                    )
+                except TypeError:
+                    sig = strat.evaluate(sym, candles, capital=capital, risk_pct=cfg.risk_per_trade_pct)
 
             # Record timeline log for evaluation
             db.add(AutomationLog(
@@ -245,7 +316,9 @@ class AutomationEngine:
             ))
             db.commit()
 
-            if sig.direction == "BUY":
+            is_buy = (sig.direction == "BUY") or (sig.direction in ["BUY_CE", "BUY_PE"] and getattr(sig, "option_contract", None) is not None)
+            if is_buy:
+                target_sym = getattr(sig, "option_symbol", sym) or sym
                 # Validate Server-Side Risk
                 risk_dec = validate_trade(
                     capital=capital,
@@ -264,18 +337,19 @@ class AutomationEngine:
                     max_trades_per_day=cfg.max_trades_per_day
                 )
 
-                if risk_dec.allowed and risk_dec.quantity > 0:
-                    sig.quantity = risk_dec.quantity
-                    await self._execute_automatic_buy(sym, sig, cfg, adapter, user_id, db)
+                if risk_dec.allowed and (getattr(sig, "quantity", 0) > 0 or risk_dec.quantity > 0):
+                    if not getattr(sig, "quantity", 0):
+                        sig.quantity = risk_dec.quantity
+                    await self._execute_automatic_buy(target_sym, sig, cfg, adapter, user_id, db)
                     # Break after filling one order to prevent concurrent burst
                     break
                 else:
                     db.add(AutomationLog(
                         user_id=user_id,
                         event_type="RISK_REJECTED",
-                        symbol=sym,
+                        symbol=target_sym,
                         broker=cfg.broker_name,
-                        message=f"Risk check blocked entry for {sym}: {risk_dec.reason}",
+                        message=f"Risk check blocked entry for {target_sym}: {risk_dec.reason}",
                         details_json=json.dumps({"reason": risk_dec.reason})
                     ))
                     db.commit()

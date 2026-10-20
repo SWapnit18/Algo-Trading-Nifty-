@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+import asyncio
 import json
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, WebSocket, WebSocketDisconnect
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -38,6 +39,12 @@ from .schemas import (
 from .investiq_service import investiq_engine
 from .kronos_engine import kronos_engine, kronos_backtester
 from .tradingview_udf import router as udf_router
+from dataclasses import asdict
+from .options_engine import options_engine, SelectedContract
+from .regime_engine import regime_engine
+from .strategies import get_all_strategies_catalog, resolve_strategy
+from .backtesting import run_options_backtest, run_walk_forward_backtest, compare_all_strategies
+from .execution_engine import execution_engine
 
 # Schemas
 class KronosBacktestRequest(BaseModel):
@@ -156,7 +163,11 @@ async def lifespan(app: FastAPI):
                     lot_size=1
                 ))
 
+        seen_codes = set()
         for strat in STRATEGY_REGISTRY.values():
+            if strat.code in seen_codes:
+                continue
+            seen_codes.add(strat.code)
             s_rec = db.scalar(select(Strategy).where(Strategy.code == strat.code))
             if not s_rec:
                 db.add(Strategy(
@@ -2233,6 +2244,11 @@ async def submit_paper_order(payload: PaperOrderRequest, user: User = Depends(ge
 def get_orders(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return db.scalars(select(Order).where(Order.user_id == user.id).order_by(Order.id.desc())).all()
 
+@app.get("/api/trades")
+@app.get("/api/v1/trades")
+def get_trades(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.scalars(select(Trade).where(Trade.user_id == user.id).order_by(Trade.id.desc())).all()
+
 @app.get("/api/positions")
 @app.get("/api/v1/positions")
 async def get_positions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -2610,6 +2626,128 @@ async def get_kronos_screener(timeframe: str = Query("15m")):
         "scanned_count": len(results),
         "rankings": results
     }
+
+# ----------------- INDEX OPTIONS DERIVATIVES & COCKPIT ROUTES -----------------
+@app.get("/api/options/chain/{underlying}")
+async def get_options_chain(underlying: str):
+    sym = "NIFTY 50" if underlying.upper() == "NIFTY" else ("BANK NIFTY" if "BANK" in underlying.upper() else underlying)
+    quote = await market_service.get_quote(sym)
+    spot = quote.ltp if quote else (24850.0 if underlying.upper() == "NIFTY" else 51200.0)
+    return options_engine.build_option_chain(underlying, spot)
+
+@app.post("/api/options/select")
+async def select_best_option_route(payload: Dict[str, Any]):
+    underlying = payload.get("underlying", "NIFTY")
+    direction = payload.get("direction", "BUY_CE")
+    sym = "NIFTY 50" if underlying.upper() == "NIFTY" else ("BANK NIFTY" if "BANK" in underlying.upper() else underlying)
+    quote = await market_service.get_quote(sym)
+    spot = quote.ltp if quote else (24850.0 if underlying.upper() == "NIFTY" else 51200.0)
+    contract = options_engine.select_best_option(underlying, direction, spot)
+    return {"contract": asdict(contract) if contract else None}
+
+@app.get("/api/regime/status/{underlying}")
+async def get_regime_status(underlying: str):
+    sym = "NIFTY 50" if underlying.upper() == "NIFTY" else ("BANK NIFTY" if "BANK" in underlying.upper() else underlying)
+    candles_15m = await market_service.get_historical_data(sym, timeframe="15m", limit=60)
+    candles_5m = await market_service.get_historical_data(sym, timeframe="5m", limit=60)
+    candles_1m = await market_service.get_historical_data(sym, timeframe="1m", limit=60)
+
+    mtf = regime_engine.evaluate_multi_timeframe(underlying, candles_15m, candles_5m, candles_1m)
+    reg_15m = regime_engine.analyze_candles(underlying, candles_15m, "15m")
+    reg_5m = regime_engine.analyze_candles(underlying, candles_5m, "5m")
+    reg_1m = regime_engine.analyze_candles(underlying, candles_1m, "1m")
+
+    score_obj = regime_engine.calculate_signal_quality_score(reg_15m, reg_5m, reg_1m)
+
+    return {
+        "underlying": underlying.upper(),
+        "spot": candles_5m[-1].close if candles_5m else 24850.0,
+        "mtf_alignment": asdict(mtf),
+        "regime_15m": asdict(reg_15m),
+        "regime_5m": asdict(reg_5m),
+        "regime_1m": asdict(reg_1m),
+        "signal_quality_score": asdict(score_obj)
+    }
+
+@app.get("/api/strategies/catalog")
+def get_strategies_catalog():
+    return get_all_strategies_catalog()
+
+@app.get("/api/strategies/compare")
+async def compare_strategies_endpoint(underlying: str = "NIFTY", capital: float = 100000.0):
+    return await compare_all_strategies(underlying=underlying, capital=capital)
+
+class WalkForwardRequest(BaseModel):
+    underlying: str = "NIFTY"
+    strategy_code: str = "STRAT_ADAPTIVE_TREND_RIDER"
+    capital: float = 100000.0
+    risk_pct: float = 0.01
+
+class OptionsBacktestRequest(BaseModel):
+    underlying: str = "NIFTY"
+    strategy_code: str = "STRAT_FIXED_RR_13"
+    capital: float = 100000.0
+    risk_pct: float = 0.01
+    split_mode: str = "FULL"
+
+@app.post("/api/backtest/walk_forward")
+async def run_walk_forward_endpoint(payload: WalkForwardRequest):
+    return await run_walk_forward_backtest(
+        payload.underlying, payload.strategy_code, payload.capital, payload.risk_pct
+    )
+
+@app.post("/api/backtest/run_options")
+async def run_options_backtest_endpoint(payload: OptionsBacktestRequest):
+    res = await run_options_backtest(
+        payload.underlying, payload.strategy_code, payload.capital, payload.risk_pct, split_mode=payload.split_mode
+    )
+    return asdict(res)
+
+@app.get("/api/killswitch/status")
+def get_killswitch_status():
+    return {
+        "stop_new_trades_active": execution_engine.stop_new_trades_active,
+        "emergency_exit_active": execution_engine.emergency_exit_active,
+        "reconciliation_status": execution_engine.reconciliation_status
+    }
+
+@app.post("/api/killswitch/stop_trades")
+def toggle_stop_trades(payload: Dict[str, Any], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    active = bool(payload.get("active", True))
+    return execution_engine.set_kill_switch_stop_trades(active, user.id, db)
+
+@app.post("/api/killswitch/emergency_exit")
+async def trigger_emergency_exit(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await execution_engine.execute_emergency_exit_all(user.id, db)
+
+@app.post("/api/reconciliation/run")
+async def trigger_reconciliation(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return await execution_engine.run_broker_reconciliation(user.id, db)
+
+@app.post("/api/trading/enable_live")
+def enable_live_trading_endpoint(payload: Dict[str, Any], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    confirmed = payload.get("confirmed", False)
+    disclaimer = payload.get("disclaimer_acknowledged", False)
+    strategy = payload.get("strategy_code", "STRAT_ADAPTIVE_TREND_RIDER")
+    if not confirmed or not disclaimer:
+        raise HTTPException(status_code=400, detail="Explicit confirmation and disclaimer acknowledgment required to enable Live Trading")
+
+    cfg = db.scalar(select(AutomationConfig).where(AutomationConfig.user_id == user.id))
+    if cfg:
+        cfg.mode = "LIVE"
+        cfg.strategy_code = strategy
+        cfg.live_confirmed_at = datetime.utcnow()
+        db.commit()
+
+    db.add(AuditLog(
+        user_id=user.id,
+        action="ENABLE_LIVE_TRADING",
+        resource="TRADING_ENGINE",
+        result="SUCCESS",
+        metadata_json=json.dumps({"strategy": strategy, "timestamp": datetime.utcnow().isoformat()})
+    ))
+    db.commit()
+    return {"status": "LIVE_ENABLED", "mode": "LIVE", "strategy": strategy, "message": "Live Trading actively armed. Capital is at risk."}
 
 # ----------------- UNIFIED FRONTEND STATIC SERVING -----------------
 import os
