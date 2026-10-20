@@ -5,7 +5,15 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-NSE_DATA_DIR = r"c:\Users\patel\Desktop\Algo Trading\NSE data"
+POSSIBLE_NSE_DIRS = [
+    r"C:\Users\patel\Desktop\System\Algo Trading\YourAlgo-v2\NSE data",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "NSE data")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "NSE data")),
+    r"c:\Users\patel\Desktop\Algo Trading\NSE data",
+    os.path.abspath(os.path.join(os.getcwd(), "NSE data")),
+    os.path.abspath(os.path.join(os.getcwd(), "..", "NSE data"))
+]
+NSE_DATA_DIR = next((d for d in POSSIBLE_NSE_DIRS if os.path.exists(d)), POSSIBLE_NSE_DIRS[0])
 
 # Sector Mapping Heuristic based on NSE Symbol & Company Name
 SECTOR_KEYWORDS = {
